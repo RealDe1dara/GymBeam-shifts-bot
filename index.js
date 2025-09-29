@@ -12,10 +12,20 @@ import {
 
 const URL_LOGIN = "https://part-time.gymbeam.com/web/login";
 const USERS_DIR = "./users";
-const USER_CHECK_INTERVAL = 10 * 60 * 1000;
-const ALL_USERS_CHECK_INTERVAL = 10 * 1000;
 const userIntervals = {};
 export const userStates = {};
+
+const ALL_USERS_CHECK_INTERVAL = Number(process.env.TELEGRAM_BOT_ALL_USERS_CHECK_INTERVAL);
+if (!ALL_USERS_CHECK_INTERVAL || isNaN(ALL_USERS_CHECK_INTERVAL)) {
+  console.error("Error: TELEGRAM_BOT_ALL_USERS_CHECK_INTERVAL must be set and a valid number!");
+  process.exit(1);
+}
+
+const USER_CHECK_INTERVAL = Number(process.env.TELEGRAM_BOT_USER_CHECK_INTERVAL);
+if (!USER_CHECK_INTERVAL || isNaN(USER_CHECK_INTERVAL)) {
+  console.error("Error: TELEGRAM_BOT_USER_CHECK_INTERVAL must be set and a valid number!");
+  process.exit(1);
+}
 
 function startUserInterval(userId) {
   if (userIntervals[userId]) {

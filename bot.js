@@ -7,11 +7,12 @@ import { stopUserInterval, userStates } from "./index.js";
 const URL_LOGIN = "https://part-time.gymbeam.com/web/login";
 const USERS_DIR = "./users";
 
-if (process.env.TELEGRAM_BOT_TOKEN === undefined) {
-  console.log("Error: can't start the bot. Token is undefined");
+const BOT_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
+
+if (!BOT_TOKEN) {
+  console.error("Error: TELEGRAM_BOT_TOKEN must be set and not empty!");
   process.exit(1);
 }
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
 export default bot;
@@ -95,7 +96,16 @@ export async function sendNewShifts(userId, parsedData) {
 }
 
 async function isValidPersonalData(userEmail, userPassword) {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--window-size=1920,1080",
+    ],
+  });
   const page = await browser.newPage();
 
   try {
@@ -146,7 +156,7 @@ bot.on("message", async (msg) => {
 
 bot.onText(/\/stop/, (msg) => {
   const userId = msg.chat.id;
-  
+
   userStates[userId] = "stopped";
   stopUserInterval(userId);
   deleteUser(USERS_DIR, userId);
