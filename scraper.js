@@ -91,7 +91,17 @@ async function getScheduledShifts(page) {
 }
 
 export async function getShifts(urlLogin, userEmail, userPassword) {
-  const browser = await puppeteer.launch({ headless: true });
+  const browser = await puppeteer.launch({
+    headless: true,
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--window-size=1920,1080",
+    ],
+  });
+
   const page = await browser.newPage();
 
   await siteLogin(urlLogin, userEmail, userPassword, page);

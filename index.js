@@ -12,6 +12,8 @@ import {
 
 const URL_LOGIN = "https://part-time.gymbeam.com/web/login";
 const USERS_DIR = "./users";
+const USER_CHECK_INTERVAL = 10 * 60 * 1000;
+const ALL_USERS_CHECK_INTERVAL = 10 * 1000;
 const userIntervals = {};
 export const userStates = {};
 
@@ -24,7 +26,7 @@ function startUserInterval(userId) {
     if (userStates[userId] !== "stopped") {
       checkUser(userId);
     }
-  }, 5 * 1000);
+  }, USER_CHECK_INTERVAL);
 }
 
 export function stopUserInterval(userId) {
@@ -76,4 +78,4 @@ async function checkUser(userId) {
 }
 
 checkForAllUsers();
-setInterval(checkForAllUsers, 10 * 1000);
+setInterval(checkForAllUsers, ALL_USERS_CHECK_INTERVAL);
