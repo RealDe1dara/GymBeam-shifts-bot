@@ -67,9 +67,9 @@ async function checkUser(userId) {
     const parsedData = parseData(scrapedData, loadedData);
     saveData(USERS_DIR, loadedData.userId, parsedData);
 
-    //if (thereIsNewShifts(parsedData)) {
+    if (thereIsNewShifts(parsedData)) {
       await sendNewShifts(loadedData.userId, parsedData);
-    //}
+    }
   } catch (err) {
     console.error("Error:", err);
   }

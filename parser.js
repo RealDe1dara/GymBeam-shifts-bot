@@ -20,14 +20,15 @@ export function getAllUsers(directory) {
 
 export function saveData(directory, userId, data) {
   try {
+    if (!fs.existsSync(directory)) {
+      fs.mkdirSync(directory, { recursive: true });
+    }
     fs.writeFileSync(`${directory}/${userId}.json`, JSON.stringify(data, null, 2));
   } catch (err) {
     console.error("Error writing file:", err);
   }
 }
 
-//If one param: file
-//If two params: directory(path), userId
 export function loadData(file) {
   try {
     const data = fs.readFileSync(file, "utf8");
