@@ -77,6 +77,7 @@ export async function sendNewShifts(userId, parsedData) {
               callback_data: "send_scheduled_shifts",
             },
           ],
+          [{ text: "Take Shifts", url: CONFIG.URL_LOGIN }],
         ],
       },
     });
@@ -162,12 +163,20 @@ bot.on("callback_query", async (query) => {
 
   if (query.data === "send_old_shifts") {
     const oldShiftsMessage = getOldShiftsMessage(userData);
-    await bot.sendMessage(userId, oldShiftsMessage);
+    await bot.sendMessage(userId, oldShiftsMessage, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
+      },
+    });
   }
 
   if (query.data === "send_scheduled_shifts") {
     const scheduledShiftsMessage = getScheduledShiftsMessage(userData);
-    await bot.sendMessage(userId, scheduledShiftsMessage);
+    await bot.sendMessage(userId, scheduledShiftsMessage, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
+      },
+    });
   }
 
   await bot.answerCallbackQuery(query.id);
