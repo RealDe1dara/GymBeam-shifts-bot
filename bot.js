@@ -3,19 +3,9 @@ import puppeteer from "puppeteer";
 import { siteLogin } from "./scraper.js";
 import { deleteUser, saveData, loadDataById } from "./parser.js";
 import { stopUserInterval, userStates } from "./index.js";
+import CONFIG from "./config.js";
 
-const URL_LOGIN = "https://part-time.gymbeam.com/web/login";
-const USERS_DIR = "./users";
-
-const BOT_TOKEN = String(process.env.TELEGRAM_BOT_TOKEN || "").trim();
-
-if (!BOT_TOKEN) {
-  console.error("Error: TELEGRAM_BOT_TOKEN must be set and not empty!");
-  process.exit(1);
-}
-
-const bot = new TelegramBot(BOT_TOKEN, { polling: true });
-export default bot;
+const bot = new TelegramBot(CONFIG.BOT_TOKEN, { polling: true });
 
 export function thereIsNewShifts(parsedData) {
   return parsedData?.newShifts?.length > 0;
@@ -109,7 +99,7 @@ async function isValidPersonalData(userEmail, userPassword) {
   const page = await browser.newPage();
 
   try {
-    await siteLogin(URL_LOGIN, userEmail, userPassword, page);
+    await siteLogin(CONFIG.URL_LOGIN, userEmail, userPassword, page);
     return page.url().includes("/news");
   } catch (err) {
     console.error("Login check failed:", err);
@@ -141,7 +131,7 @@ bot.on("message", async (msg) => {
 
     if (isValid) {
       bot.sendMessage(userId, "✅ Logged in successfully!");
-      saveData(USERS_DIR, userId, {
+      saveData(CONFIG.USERS_DIR, userId, {
         userId,
         userEmail: state.email,
         userPassword: state.password,
@@ -159,7 +149,7 @@ bot.onText(/\/stop/, (msg) => {
 
   userStates[userId] = "stopped";
   stopUserInterval(userId);
-  deleteUser(USERS_DIR, userId);
+  deleteUser(CONFIG.USERS_DIR, userId);
   bot.sendMessage(
     userId,
     "👋 Thanks for using this bot! Your personal data was deleted! Bye!"
@@ -168,7 +158,7 @@ bot.onText(/\/stop/, (msg) => {
 
 bot.on("callback_query", async (query) => {
   const userId = query.from.id;
-  const userData = loadDataById(USERS_DIR, userId);
+  const userData = loadDataById(CONFIG.USERS_DIR, userId);
 
   if (query.data === "send_old_shifts") {
     const oldShiftsMessage = getOldShiftsMessage(userData);
