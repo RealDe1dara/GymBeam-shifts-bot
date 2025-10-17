@@ -1,11 +1,19 @@
 import TelegramBot from "node-telegram-bot-api";
-import puppeteer from "puppeteer";
+import puppeteer, { executablePath } from "puppeteer";
 import { siteLogin } from "./scraper.js";
-import { deleteUser, saveData, loadDataById } from "./parser.js";
-import { stopUserInterval, userStates } from "./index.js";
+import { parseData } from "./parser.js";
+import {
+  addOrUpdateUser,
+  getUserById,
+  deleteUserById,
+  saveParsedData,
+} from "./db.js";
 import CONFIG from "./config.js";
 
 const bot = new TelegramBot(CONFIG.BOT_TOKEN, { polling: true });
+
+// keep auth sessions local to bot to avoid circular import
+const sessions = Object.create(null);
 
 export function thereIsNewShifts(parsedData) {
   return parsedData?.newShifts?.length > 0;
@@ -24,9 +32,10 @@ function getNewShiftsMessage(parsedData) {
   if (thereIsNewShifts(parsedData)) {
     text += `\n✨New ${parsedData.newShiftsCount} Shifts:\n`;
     parsedData.newShifts.forEach((shift, i) => {
-      text += `${i + 1}) ${shift.date} 🕒 ${shift.time_from}-${
+      const day = getDayOfWeek(shift.date);
+      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
         shift.time_to
-      }\n       ${shift.responsible}.\n`;
+      }\n   ${day} 🔪 ${shift.responsible}.\n`;
     });
   } else {
     text += "❌ You have no new shifts ❌";
@@ -39,9 +48,10 @@ function getOldShiftsMessage(parsedData) {
   if (thereIsOldShifts(parsedData)) {
     text += `\n📅Old ${parsedData.oldShiftsCount} Shifts:\n`;
     parsedData.oldShifts.forEach((shift, i) => {
-      text += `${i + 1}) ${shift.date} 🕒 ${shift.time_from}-${
+      const day = getDayOfWeek(shift.date);
+      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
         shift.time_to
-      }\n       ${shift.responsible}.\n`;
+      }\n   ${day} 🔪 ${shift.responsible}.\n`;
     });
   } else {
     text += "❌ You have no old shifts ❌";
@@ -54,14 +64,34 @@ function getScheduledShiftsMessage(parsedData) {
   if (thereIsScheduledShifts(parsedData)) {
     text += `\n📌Scheduled ${parsedData.scheduledShiftsCount} Shifts:\n`;
     parsedData.scheduledShifts.forEach((shift, i) => {
-      text += `${i + 1}) ${shift.date} 🕒 ${shift.time_from}-${
+      const day = getDayOfWeek(shift.date);
+      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
         shift.time_to
-      }\n       ${shift.responsible}.\n`;
+      }\n   ${day} 🔪 ${shift.responsible}.\n`;
     });
   } else {
     text += "❌ You have no scheduled shifts ❌";
   }
   return text;
+}
+
+function getDayOfWeek(dateString) {
+  if (!dateString || typeof dateString !== "string") {
+    console.warn("getDayOfWeek: invalid dateString =", dateString);
+    return "Unknown";
+  }
+  const [day, month, year] = dateString.split(".").map(Number);
+  const date = new Date(year, month - 1, day);
+  const weekdays = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  return weekdays[date.getDay()];
 }
 
 export async function sendNewShifts(userId, parsedData) {
@@ -72,10 +102,7 @@ export async function sendNewShifts(userId, parsedData) {
         inline_keyboard: [
           [
             { text: "📅 Old", callback_data: "send_old_shifts" },
-            {
-              text: "📌 Scheduled",
-              callback_data: "send_scheduled_shifts",
-            },
+            { text: "📌 Scheduled", callback_data: "send_scheduled_shifts" },
           ],
           [{ text: "Take Shifts", url: CONFIG.URL_LOGIN }],
         ],
@@ -88,16 +115,22 @@ export async function sendNewShifts(userId, parsedData) {
 
 async function isValidPersonalData(userEmail, userPassword) {
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: "new",
+    executablePath:
+      process.env.PUPPETEER_EXECUTABLE_PATH || (await executablePath()),
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
       "--disable-gpu",
+      "--no-zygote",
+      "--single-process",
       "--window-size=1920,1080",
     ],
   });
   const page = await browser.newPage();
+  page.setDefaultTimeout(45000);
+  page.setDefaultNavigationTimeout(60000);
 
   try {
     await siteLogin(CONFIG.URL_LOGIN, userEmail, userPassword, page);
@@ -112,13 +145,13 @@ async function isValidPersonalData(userEmail, userPassword) {
 
 bot.onText(/\/start/, (msg) => {
   const userId = msg.chat.id;
-  userStates[userId] = { step: "email" };
+  sessions[userId] = { step: "email" };
   bot.sendMessage(userId, "👋 Hello! Enter your email:");
 });
 
 bot.on("message", async (msg) => {
   const userId = msg.chat.id;
-  const state = userStates[userId];
+  const state = sessions[userId];
   if (!state) return;
 
   if (state.step === "email") {
@@ -132,12 +165,26 @@ bot.on("message", async (msg) => {
 
     if (isValid) {
       bot.sendMessage(userId, "✅ Logged in successfully!");
-      saveData(CONFIG.USERS_DIR, userId, {
+
+      await addOrUpdateUser({
+        userId,
+        email: state.email,
+        password: state.password,
+      });
+
+      await saveParsedData(userId, {
         userId,
         userEmail: state.email,
         userPassword: state.password,
+        oldShifts: [],
+        newShifts: [],
+        scheduledShifts: [],
+        oldShiftsCount: 0,
+        newShiftsCount: 0,
+        scheduledShiftsCount: 0,
       });
-      delete userStates[userId];
+
+      delete sessions[userId];
     } else {
       bot.sendMessage(userId, "❌ Wrong data, try again. Enter email:");
       state.step = "email";
@@ -145,21 +192,24 @@ bot.on("message", async (msg) => {
   }
 });
 
-bot.onText(/\/stop/, (msg) => {
+bot.onText(/\/stop/, async (msg) => {
   const userId = msg.chat.id;
-
-  userStates[userId] = "stopped";
-  stopUserInterval(userId);
-  deleteUser(CONFIG.USERS_DIR, userId);
-  bot.sendMessage(
-    userId,
-    "👋 Thanks for using this bot! Your personal data was deleted! Bye!"
-  );
+  try {
+    await deleteUserById(userId);
+    await bot.sendMessage(
+      userId,
+      "👋 Thanks for using this bot! Your personal data was deleted! Bye!"
+    );
+  } catch (err) {
+    console.error("Error deleting user:", err);
+    await bot.sendMessage(userId, "❌ Failed to delete your data.");
+  }
 });
 
 bot.on("callback_query", async (query) => {
   const userId = query.from.id;
-  const userData = loadDataById(CONFIG.USERS_DIR, userId);
+  const userRow = await getUserById(userId);
+  const userData = userRow ? userRow.parsedData || {} : {};
 
   if (query.data === "send_old_shifts") {
     const oldShiftsMessage = getOldShiftsMessage(userData);
