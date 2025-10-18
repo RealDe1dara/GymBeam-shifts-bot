@@ -11,10 +11,10 @@ import {
 } from "./db.js";
 
 const userIntervals = {};
-const inFlight = new Set(); // prevent overlapping runs per user
+const inFlight = new Set();
 export const userStates = {};
 
-function startUserInterval(userId) {
+export function startUserInterval(userId) {
   if (userIntervals[userId]) {
     clearInterval(userIntervals[userId]);
   }
@@ -53,7 +53,7 @@ async function checkForAllUsers() {
   }
 }
 
-async function checkUser(userId) {
+export async function checkUser(userId) {
   if (inFlight.has(userId)) return;
   inFlight.add(userId);
 
@@ -70,12 +70,7 @@ async function checkUser(userId) {
       loadedData.userPassword
     );
 
-    const parsedData = parseData(scrapedData, {
-      userId: loadedData.userId,
-      userEmail: loadedData.userEmail,
-      userPassword: loadedData.userPassword,
-      ...(loadedData.parsedData || {}),
-    });
+    const parsedData = parseData(scrapedData, loadedData.parsedData || {});
 
     await saveParsedData(loadedData.userId, parsedData);
 
@@ -89,7 +84,8 @@ async function checkUser(userId) {
   }
 }
 
-(async () => {
-  await checkForAllUsers();
-  setInterval(() => checkForAllUsers().catch(console.error), CONFIG.ALL_USERS_CHECK_INTERVAL);
-})();
+checkForAllUsers();
+setInterval(
+  () => checkForAllUsers().catch(console.error),
+  CONFIG.ALL_USERS_CHECK_INTERVAL
+);

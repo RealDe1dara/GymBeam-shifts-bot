@@ -3,16 +3,13 @@ import puppeteer, { executablePath } from "puppeteer";
 export async function siteLogin(urlLogin, userEmail, userPassword, page) {
   await page.goto(urlLogin, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-  // Cookie banner may be absent or delayed on Railway/CDN
   try {
     await page.waitForSelector("#cookies-consent-essential", {
       visible: true,
       timeout: 5000,
     });
     await page.click("#cookies-consent-essential");
-  } catch (_) {
-    // no cookie banner, continue
-  }
+  } catch (_) {}
 
   await page.waitForSelector("#login", { timeout: 30000 });
   await page.waitForSelector("#password", { timeout: 30000 });
@@ -141,9 +138,6 @@ export async function getShifts(urlLogin, userEmail, userPassword) {
 
   try {
     await siteLogin(urlLogin, userEmail, userPassword, page);
-
-    // If the login doesn't land on the page with tables, navigate accordingly here.
-    // await page.goto(SOME_INVITATIONS_URL, { waitUntil: "domcontentloaded" });
 
     const invitedShifts = await getInvitedShifts(page);
     const scheduledShifts = await getScheduledShifts(page);

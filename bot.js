@@ -1,7 +1,8 @@
 import TelegramBot from "node-telegram-bot-api";
 import puppeteer, { executablePath } from "puppeteer";
 import { siteLogin } from "./scraper.js";
-import { parseData } from "./parser.js";
+import { startUserInterval, stopUserInterval, userStates } from "./index.js";
+
 import {
   addOrUpdateUser,
   getUserById,
@@ -12,7 +13,6 @@ import CONFIG from "./config.js";
 
 const bot = new TelegramBot(CONFIG.BOT_TOKEN, { polling: true });
 
-// keep auth sessions local to bot to avoid circular import
 const sessions = Object.create(null);
 
 export function thereIsNewShifts(parsedData) {
@@ -143,6 +143,16 @@ async function isValidPersonalData(userEmail, userPassword) {
   }
 }
 
+async function validateOrUnknown(email, password) {
+  try {
+    const ok = await isValidPersonalData(email, password);
+    return ok ? "ok" : "bad";
+  } catch (e) {
+    console.error("Validation error (treat as unknown, proceed):", e);
+    return "unknown";
+  }
+}
+
 bot.onText(/\/start/, (msg) => {
   const userId = msg.chat.id;
   sessions[userId] = { step: "email" };
@@ -161,30 +171,39 @@ bot.on("message", async (msg) => {
   } else if (state.step === "password") {
     state.password = msg.text;
 
-    const isValid = await isValidPersonalData(state.email, state.password);
+    const verdict = await validateOrUnknown(state.email, state.password);
+    if (verdict === "ok" || verdict === "unknown") {
+      try {
+        await addOrUpdateUser({
+          userId,
+          email: state.email,
+          password: state.password,
+        });
 
-    if (isValid) {
-      bot.sendMessage(userId, "✅ Logged in successfully!");
+        await saveParsedData(userId, {
+          oldShifts: [],
+          newShifts: [],
+          scheduledShifts: [],
+          oldShiftsCount: 0,
+          newShiftsCount: 0,
+          scheduledShiftsCount: 0,
+        });
 
-      await addOrUpdateUser({
-        userId,
-        email: state.email,
-        password: state.password,
-      });
+        startUserInterval(userId);
+        userStates[userId] = "active";
 
-      await saveParsedData(userId, {
-        userId,
-        userEmail: state.email,
-        userPassword: state.password,
-        oldShifts: [],
-        newShifts: [],
-        scheduledShifts: [],
-        oldShiftsCount: 0,
-        newShiftsCount: 0,
-        scheduledShiftsCount: 0,
-      });
-
-      delete sessions[userId];
+        bot.sendMessage(
+          userId,
+          verdict === "ok"
+            ? "✅ Logged in successfully! I will start checking your shifts."
+            : "⚠️ Couldn’t verify login right now, but I’ll start checking your shifts. If credentials are wrong, I’ll let you know."
+        );
+      } catch (e) {
+        console.error("addOrUpdateUser/saveParsedData failed:", e);
+        await bot.sendMessage(userId, "❌ Failed to save your data.");
+      } finally {
+        delete sessions[userId];
+      }
     } else {
       bot.sendMessage(userId, "❌ Wrong data, try again. Enter email:");
       state.step = "email";
@@ -195,7 +214,12 @@ bot.on("message", async (msg) => {
 bot.onText(/\/stop/, async (msg) => {
   const userId = msg.chat.id;
   try {
+    userStates[userId] = "stopped";
+    stopUserInterval(userId);
+
     await deleteUserById(userId);
+    delete sessions[userId];
+
     await bot.sendMessage(
       userId,
       "👋 Thanks for using this bot! Your personal data was deleted! Bye!"

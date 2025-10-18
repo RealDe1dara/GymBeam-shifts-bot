@@ -8,6 +8,8 @@ credentials.csv
 node_modules
 package-lock.json
 users
+google-cloud*
+cloud*
 
 *.dSYM
 *.dSYM-*
