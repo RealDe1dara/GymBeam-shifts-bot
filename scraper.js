@@ -55,16 +55,14 @@ async function getInvitedShifts(page) {
     (rows) =>
       rows.map((row) => {
         const cells = row.querySelectorAll("td");
-        const time = cells[1]?.innerText.trim() || "";
-        const [from, to] = time.includes("-")
-          ? time.split("-").map((s) => s.trim())
-          : [time, ""];
+
+        // Correct mapping based on DEBUG output:
+        // cells[0] = date, cells[1] = time_from, cells[2] = time_to, cells[3] = responsible
         return {
-          date: cells[0]?.innerText.trim(),
-          time_from: from,
-          time_to: to,
-          responsible:
-            cells[2]?.innerText.trim() || cells[3]?.innerText.trim() || "",
+          date: cells[0]?.innerText.trim() || "",
+          time_from: cells[1]?.innerText.trim() || "",
+          time_to: cells[2]?.innerText.trim() || "",
+          responsible: cells[3]?.innerText.trim() || "",
         };
       })
   );
@@ -100,16 +98,13 @@ async function getScheduledShifts(page) {
     (rows) =>
       rows.map((row) => {
         const cells = row.querySelectorAll("td");
-        const time = cells[1]?.innerText.trim() || "";
-        const [from, to] = time.includes("-")
-          ? time.split("-").map((s) => s.trim())
-          : [time, ""];
+
+        // Same structure as invited shifts
         return {
-          date: cells[0]?.innerText.trim(),
-          time_from: from,
-          time_to: to,
-          responsible:
-            cells[2]?.innerText.trim() || cells[3]?.innerText.trim() || "",
+          date: cells[0]?.innerText.trim() || "",
+          time_from: cells[1]?.innerText.trim() || "",
+          time_to: cells[2]?.innerText.trim() || "",
+          responsible: cells[3]?.innerText.trim() || "",
         };
       })
   );
