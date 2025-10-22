@@ -1,15 +1,23 @@
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
-
 dotenv.config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
+const isCloudRun = process.env.K_SERVICE !== undefined;
+
+const poolConfig = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
-  port: process.env.DB_PORT || 3306,
-});
+};
+
+if (isCloudRun || process.env.DB_HOST?.startsWith("/cloudsql/")) {
+  poolConfig.socketPath = process.env.DB_HOST;
+} else {
+  poolConfig.host = process.env.DB_HOST;
+  poolConfig.port = process.env.DB_PORT || 3306;
+}
+
+const pool = mysql.createPool(poolConfig);
 export default pool;
 
 async function initDB() {

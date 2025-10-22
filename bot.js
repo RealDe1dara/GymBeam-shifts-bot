@@ -1,19 +1,77 @@
 import TelegramBot from "node-telegram-bot-api";
-import puppeteer, { executablePath } from "puppeteer";
+import CONFIG from "./config.js";
+import puppeteer from "puppeteer";
+import { executablePath } from "puppeteer";
 import { siteLogin } from "./scraper.js";
-import { startUserInterval, stopUserInterval, userStates } from "./index.js";
-
 import {
   addOrUpdateUser,
-  getUserById,
-  deleteUserById,
   saveParsedData,
+  deleteUserById,
+  getUserById,
 } from "./db.js";
-import CONFIG from "./config.js";
+import { startUserInterval, stopUserInterval, userStates } from "./index.js";
 
-const bot = new TelegramBot(CONFIG.BOT_TOKEN, { polling: true });
+const bot = new TelegramBot(CONFIG.BOT_TOKEN, {
+  polling: {
+    interval: 1000,
+    autoStart: true,
+    params: {
+      timeout: 10,
+    },
+  },
+});
+
+bot.on("polling_error", (error) => {
+  console.error("Telegram polling error:", error.code, error.message);
+});
+
+bot.on("error", (error) => {
+  console.error("Telegram bot error:", error);
+});
 
 const sessions = Object.create(null);
+
+function isCommandMessage(msg) {
+  return typeof msg.text === "string" && msg.text.startsWith("/");
+}
+
+function isRegistering(userId) {
+  const step = sessions[userId]?.step;
+  return step === "email" || step === "password";
+}
+
+function blockIfRegistering(msg) {
+  const userId = msg.chat.id;
+  if (isRegistering(userId)) {
+    bot.sendMessage(
+      userId,
+      "Please finish registration first. Send /stop to cancel."
+    );
+    return true;
+  }
+  return false;
+}
+
+async function isRegistered(userId) {
+  try {
+    const row = await getUserById(userId);
+    return !!row;
+  } catch (e) {
+    console.error("isRegistered failed:", e);
+    return false;
+  }
+}
+
+async function blockIfUnregistered(userId) {
+  if (!(await isRegistered(userId))) {
+    await bot.sendMessage(
+      userId,
+      "You are not registered yet. Send /start to register."
+    );
+    return true;
+  }
+  return false;
+}
 
 export function thereIsNewShifts(parsedData) {
   return parsedData?.newShifts?.length > 0;
@@ -134,7 +192,8 @@ async function isValidPersonalData(userEmail, userPassword) {
 
   try {
     await siteLogin(CONFIG.URL_LOGIN, userEmail, userPassword, page);
-    return page.url().includes("/news");
+    const isLoggedIn = page.url().includes("/news");
+    return isLoggedIn;
   } catch (err) {
     console.error("Login check failed:", err);
     return false;
@@ -143,20 +202,85 @@ async function isValidPersonalData(userEmail, userPassword) {
   }
 }
 
-async function validateOrUnknown(email, password) {
-  try {
-    const ok = await isValidPersonalData(email, password);
-    return ok ? "ok" : "bad";
-  } catch (e) {
-    console.error("Validation error (treat as unknown, proceed):", e);
-    return "unknown";
-  }
-}
 
-bot.onText(/\/start/, (msg) => {
+await bot.setMyCommands([
+  { command: "start", description: "Start the bot" },
+  { command: "stop", description: "Stop receiving updates" },
+  { command: "help", description: "Show existing commands" },
+  { command: "new", description: "Show new shifts" },
+  { command: "old", description: "Show old shifts" },
+  { command: "scheduled", description: "Show scheduled shifts" },
+]);
+
+bot.onText(/\/new/, async (msg) => {
   const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+  if (await blockIfUnregistered(userId)) return;
+  const userRow = await getUserById(userId);
+  const userData = userRow ? userRow.parsedData || {} : {};
+  await bot.sendMessage(userId, getNewShiftsMessage(userData), {
+    reply_markup: {
+      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
+    },
+  });
+});
+
+bot.onText(/\/old/, async (msg) => {
+  const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+  if (await blockIfUnregistered(userId)) return;
+  const userRow = await getUserById(userId);
+  const userData = userRow ? userRow.parsedData || {} : {};
+  await bot.sendMessage(userId, getOldShiftsMessage(userData), {
+    reply_markup: {
+      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
+    },
+  });
+});
+
+bot.onText(/\/scheduled/, async (msg) => {
+  const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+  if (await blockIfUnregistered(userId)) return;
+  const userRow = await getUserById(userId);
+  const userData = userRow ? userRow.parsedData || {} : {};
+  await bot.sendMessage(userId, getScheduledShiftsMessage(userData), {
+    reply_markup: {
+      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
+    },
+  });
+});
+
+bot.onText(/\/help/, async (msg) => {
+  const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+  await bot.sendMessage(
+    userId,
+    "Available commands:\n/start - Start the bot\n/stop - Stop the bot\n/new - Show new shifts\n/old - Show old shifts\n/scheduled - Show scheduled shifts"
+  );
+});
+
+bot.onText(/\/start/, async (msg) => {
+  const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+
+  try {
+    const existing = await getUserById(userId);
+    if (existing) {
+      userStates[userId] = "active";
+      startUserInterval(userId);
+      await bot.sendMessage(
+        userId,
+        "✅ You are already registered. Use /stop to remove your data."
+      );
+      return;
+    }
+  } catch (e) {
+    console.error("start: getUserById failed:", e);
+  }
+
   sessions[userId] = { step: "email" };
-  bot.sendMessage(userId, "👋 Hello! Enter your email:");
+  await bot.sendMessage(userId, "👋 Welcome! Please enter your email:");
 });
 
 bot.on("message", async (msg) => {
@@ -164,74 +288,98 @@ bot.on("message", async (msg) => {
   const state = sessions[userId];
   if (!state) return;
 
+  if (!msg.text || isCommandMessage(msg)) return;
+
   if (state.step === "email") {
     state.email = msg.text;
     state.step = "password";
-    bot.sendMessage(userId, "Enter your password:");
+    await bot.sendMessage(userId, "Enter your password:");
   } else if (state.step === "password") {
     state.password = msg.text;
 
-    const verdict = await validateOrUnknown(state.email, state.password);
-    if (verdict === "ok" || verdict === "unknown") {
-      try {
-        await addOrUpdateUser({
+    try {
+      await bot.sendMessage(userId, "⏳ Validating your data ...");
+      const ok = await isValidPersonalData(state.email, state.password);
+      if (!ok) {
+        await bot.sendMessage(
           userId,
-          email: state.email,
-          password: state.password,
-        });
-
-        await saveParsedData(userId, {
-          oldShifts: [],
-          newShifts: [],
-          scheduledShifts: [],
-          oldShiftsCount: 0,
-          newShiftsCount: 0,
-          scheduledShiftsCount: 0,
-        });
-
-        startUserInterval(userId);
-        userStates[userId] = "active";
-
-        bot.sendMessage(
-          userId,
-          verdict === "ok"
-            ? "✅ Logged in successfully! I will start checking your shifts."
-            : "⚠️ Couldn’t verify login right now, but I’ll start checking your shifts. If credentials are wrong, I’ll let you know."
+          "❌ Login failed. Please re-enter your email:"
         );
-      } catch (e) {
-        console.error("addOrUpdateUser/saveParsedData failed:", e);
-        await bot.sendMessage(userId, "❌ Failed to save your data.");
-      } finally {
-        delete sessions[userId];
+        sessions[userId] = { step: "email" };
+        return;
       }
-    } else {
-      bot.sendMessage(userId, "❌ Wrong data, try again. Enter email:");
-      state.step = "email";
+    } catch (e) {
+      console.error("isValidPersonalData failed:", e);
+      await bot.sendMessage(
+        userId,
+        "⚠️ Couldn’t verify right now. Please re-enter your email:"
+      );
+      sessions[userId] = { step: "email" };
+      return;
+    }
+
+    const existing = await getUserById(userId).catch((e) => {
+      console.error("password step: getUserById failed:", e);
+      return null;
+    });
+    if (existing) {
+      userStates[userId] = "active";
+      startUserInterval(userId);
+      await bot.sendMessage(userId, "✅ You are already registered.");
+      delete sessions[userId];
+      return;
+    }
+
+    try {
+      await addOrUpdateUser({
+        userId,
+        email: state.email,
+        password: state.password,
+      });
+      await saveParsedData(userId, {
+        oldShifts: [],
+        newShifts: [],
+        scheduledShifts: [],
+        oldShiftsCount: 0,
+        newShiftsCount: 0,
+        scheduledShiftsCount: 0,
+      });
+
+      startUserInterval(userId);
+      userStates[userId] = "active";
+
+      await bot.sendMessage(
+        userId,
+        "✅ Registered! I will start checking your shifts."
+      );
+    } catch (e) {
+      console.error("Registration failed for userId:", userId, e);
+      await bot.sendMessage(
+        userId,
+        "❌ Failed to save your data: " + e.message
+      );
+    } finally {
+      delete sessions[userId];
     }
   }
 });
 
 bot.onText(/\/stop/, async (msg) => {
   const userId = msg.chat.id;
-  try {
-    userStates[userId] = "stopped";
-    stopUserInterval(userId);
-
-    await deleteUserById(userId);
-    delete sessions[userId];
-
-    await bot.sendMessage(
-      userId,
-      "👋 Thanks for using this bot! Your personal data was deleted! Bye!"
-    );
-  } catch (err) {
-    console.error("Error deleting user:", err);
-    await bot.sendMessage(userId, "❌ Failed to delete your data.");
-  }
+  userStates[userId] = "stopped";
+  stopUserInterval(userId);
+  await deleteUserById(userId).catch(() => {});
+  delete sessions[userId];
+  await bot.sendMessage(userId, "Registration cancelled and data removed.");
 });
 
 bot.on("callback_query", async (query) => {
   const userId = query.from.id;
+  if (await blockIfUnregistered(userId)) {
+    await bot.answerCallbackQuery(query.id);
+    return;
+  }
+
   const userRow = await getUserById(userId);
   const userData = userRow ? userRow.parsedData || {} : {};
 

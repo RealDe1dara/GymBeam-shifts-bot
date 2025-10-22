@@ -23,6 +23,7 @@ src/__pycache__/
 .vscode/
 .venv/
 .env
+env.yaml
 bin/
 dist/
 .launch

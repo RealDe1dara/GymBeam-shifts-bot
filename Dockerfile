@@ -1,24 +1,7 @@
 # Use Node 22
 FROM node:22-slim
 
-# Set working directory
-WORKDIR /app
-
-# Copy package files separately to leverage caching
-COPY package*.json ./
-
-# Install only production dependencies
-RUN npm install --production
-
-# Copy the rest of the application code
-# This layer will rebuild only if your code changes
-COPY . .
-
-# Set environment variables for Puppeteer
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
-
-# Install Chromium and required libraries in a single layer
+# Install Chromium and deps FIRST (cached across code changes)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     chromium \
     ca-certificates \
@@ -28,7 +11,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xdg-utils \
     wget \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+  && rm -rf /var/lib/apt/lists/*
 
-# Default command
+# Puppeteer env
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
+
+WORKDIR /app
+
+# Install deps (cached if package*.json unchanged)
+COPY package*.json ./
+RUN npm install --omit=dev
+
+# Copy app code (only this layer changes on edits)
+COPY . .
+
+EXPOSE 8080
 CMD ["node", "index.js"]
