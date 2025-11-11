@@ -6,14 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "postinstall": "npx puppeteer browsers install chrome",
-    "deploy": "gcloud builds submit --tag gcr.io/gymbeam-bot-475423/gb_bot --quiet && gcloud run deploy gb-bot --image gcr.io/gymbeam-bot-475423/gb_bot --region us-central1 --quiet",
-    "docker": "docker build -t gb_bot . && docker run --env-file .env --add-host=host.docker.internal:host-gateway -p 8080:8080 gb_bot"
+    "compose" : "docker compose up --build"
   },
   "dependencies": {
-    "axios": "^1.12.2",
-    "better-sqlite3": "^12.4.1",
-    "cheerio": "^1.1.2",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "mysql2": "^3.15.2",

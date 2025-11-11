@@ -1,29 +1,34 @@
-# Use Node 22
-FROM node:22-slim
+FROM node:22-bookworm-slim
 
-# Install Chromium and deps FIRST (cached across code changes)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium \
-    ca-certificates \
-    fonts-liberation \
-    libnss3 \
-    lsb-release \
-    xdg-utils \
-    wget \
-    curl \
-  && rm -rf /var/lib/apt/lists/*
-
-# Puppeteer env
+ENV DEBIAN_FRONTEND=noninteractive
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 WORKDIR /app
 
-# Install deps (cached if package*.json unchanged)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    chromium \
+    ca-certificates \
+    fonts-liberation \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libx11-xcb1 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libnspr4 \
+    libnss3 \
+    libxss1 \
+  && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+
 COPY package*.json ./
 RUN npm install --omit=dev
 
-# Copy app code (only this layer changes on edits)
 COPY . .
 
 EXPOSE 8080

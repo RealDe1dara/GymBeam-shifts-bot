@@ -1,21 +1,17 @@
-import mysql from "mysql2/promise";
 import dotenv from "dotenv";
+import mysql from "mysql2/promise";
+
 dotenv.config();
 
-const isCloudRun = process.env.K_SERVICE !== undefined;
-
 const poolConfig = {
+  host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0,
 };
-
-if (isCloudRun || process.env.DB_HOST?.startsWith("/cloudsql/")) {
-  poolConfig.socketPath = process.env.DB_HOST;
-} else {
-  poolConfig.host = process.env.DB_HOST;
-  poolConfig.port = process.env.DB_PORT || 3306;
-}
 
 const pool = mysql.createPool(poolConfig);
 export default pool;
@@ -29,7 +25,9 @@ async function initDB() {
       parsedData JSON
     );
   `;
+
   await pool.execute(createTableSQL);
+  console.log("Db init");
 }
 
 initDB().catch(console.error);
