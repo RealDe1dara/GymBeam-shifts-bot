@@ -9,7 +9,12 @@ import {
   deleteUserById,
   getUserById,
 } from "./db.js";
-import { startUserInterval, stopUserInterval, userStates } from "./index.js";
+import {
+  slovakHolidays,
+  startUserInterval,
+  stopUserInterval,
+  userStates,
+} from "./index.js";
 
 const bot = new TelegramBot(CONFIG.BOT_TOKEN, {
   polling: {
@@ -86,51 +91,106 @@ function thereIsOldShifts(parsedData) {
 }
 
 function getNewShiftsMessage(parsedData) {
-  let text = "";
-  if (thereIsNewShifts(parsedData)) {
-    text += `\n✨New ${parsedData.newShiftsCount} Shifts:\n`;
-    parsedData.newShifts.forEach((shift, i) => {
-      const day = getDayOfWeek(shift.date);
-      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
-        shift.time_to
-      }\n   ${day} 🔪 ${shift.responsible}.\n`;
-    });
-  } else {
-    text += "❌ You have no new shifts ❌";
+  if (!thereIsNewShifts(parsedData)) {
+    return "❌ You have no new shifts ❌";
   }
-  return text;
+
+  let text = `✨ New ${parsedData.newShiftsCount} Shifts\n\n`;
+
+  const sortedShifts = sortShiftsByDate(parsedData.newShifts);
+
+  const shiftsByDate = {};
+  sortedShifts.forEach((shift) => {
+    if (!shiftsByDate[shift.date]) shiftsByDate[shift.date] = [];
+    shiftsByDate[shift.date].push(shift);
+  });
+
+  for (const date of Object.keys(shiftsByDate)) {
+    const day = getDayOfWeek(date);
+    text += `${date} (${day})`;
+    text += slovakHolidays.includes(date) ? " 🎉 Holiday!\n" : "\n";
+
+    shiftsByDate[date].forEach((shift) => {
+      const status = shift.allowed ? "" : "❌";
+      text += `🪓 ${shift.time_from}–${shift.time_to} | ${shift.responsible} ${status}\n`;
+    });
+
+    text += "\n";
+  }
+
+  return text.trim();
 }
 
 function getOldShiftsMessage(parsedData) {
-  let text = "";
-  if (thereIsOldShifts(parsedData)) {
-    text += `\n📅Old ${parsedData.oldShiftsCount} Shifts:\n`;
-    parsedData.oldShifts.forEach((shift, i) => {
-      const day = getDayOfWeek(shift.date);
-      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
-        shift.time_to
-      }\n   ${day} 🔪 ${shift.responsible}.\n`;
-    });
-  } else {
-    text += "❌ You have no old shifts ❌";
+  if (!thereIsOldShifts(parsedData)) {
+    return "❌ You have no old shifts ❌";
   }
-  return text;
+
+  let text = `\n📅 Old ${parsedData.oldShiftsCount} Shifts\n\n`;
+
+  const sortedShifts = sortShiftsByDate(parsedData.oldShifts);
+
+  const shiftsByDate = {};
+  sortedShifts.forEach((shift) => {
+    if (!shiftsByDate[shift.date]) shiftsByDate[shift.date] = [];
+    shiftsByDate[shift.date].push(shift);
+  });
+
+  for (const date of Object.keys(shiftsByDate)) {
+    const day = getDayOfWeek(date);
+    text += `${date} (${day})`;
+    text += slovakHolidays.includes(date) ? " 🎉 Holiday!\n" : "\n";
+
+    shiftsByDate[date].forEach((shift) => {
+      const status = shift.allowed ? "" : "❌";
+      text += `🪓 ${shift.time_from}–${shift.time_to} | ${shift.responsible} ${status}\n`;
+    });
+
+    text += "\n";
+  }
+
+  return text.trim();
 }
 
 function getScheduledShiftsMessage(parsedData) {
-  let text = "";
-  if (thereIsScheduledShifts(parsedData)) {
-    text += `\n📌Scheduled ${parsedData.scheduledShiftsCount} Shifts:\n`;
-    parsedData.scheduledShifts.forEach((shift, i) => {
-      const day = getDayOfWeek(shift.date);
-      text += `${i + 1}) ${shift.date} 🪓 ${shift.time_from}-${
-        shift.time_to
-      }\n   ${day} 🔪 ${shift.responsible}.\n`;
-    });
-  } else {
-    text += "❌ You have no scheduled shifts ❌";
+  if (!thereIsScheduledShifts(parsedData)) {
+    return "❌ You have no scheduled shifts ❌";
   }
-  return text;
+
+  let text = `\n📌 Scheduled ${parsedData.scheduledShiftsCount} Shifts\n\n`;
+
+  const sortedShifts = sortShiftsByDate(parsedData.scheduledShifts);
+
+  const shiftsByDate = {};
+  sortedShifts.forEach((shift) => {
+    if (!shiftsByDate[shift.date]) shiftsByDate[shift.date] = [];
+    shiftsByDate[shift.date].push(shift);
+  });
+
+  for (const date of Object.keys(shiftsByDate)) {
+    const day = getDayOfWeek(date);
+    text += `${date} (${day})`;
+    text += slovakHolidays.includes(date) ? " 🎉 Holiday!\n" : "\n";
+
+    shiftsByDate[date].forEach((shift) => {
+      const status = shift.allowed ? "" : "❌";
+      text += `🪓 ${shift.time_from}–${shift.time_to} | ${shift.responsible} ${status}\n`;
+    });
+
+    text += "\n";
+  }
+
+  return text.trim();
+}
+
+function sortShiftsByDate(shifts) {
+  return shifts.slice().sort((a, b) => {
+    const [dayA, monthA, yearA] = a.date.split(".").map(Number);
+    const [dayB, monthB, yearB] = b.date.split(".").map(Number);
+    const dateA = new Date(yearA, monthA - 1, dayA);
+    const dateB = new Date(yearB, monthB - 1, dayB);
+    return dateA - dateB;
+  });
 }
 
 function getDayOfWeek(dateString) {
@@ -201,7 +261,6 @@ async function isValidPersonalData(userEmail, userPassword) {
     await browser.close();
   }
 }
-
 
 await bot.setMyCommands([
   { command: "start", description: "Start the bot" },

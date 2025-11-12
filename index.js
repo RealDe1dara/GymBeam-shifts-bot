@@ -2,6 +2,7 @@ import express from "express";
 import { sendNewShifts, thereIsNewShifts } from "./bot.js";
 import { getShifts } from "./scraper.js";
 import CONFIG from "./config.js";
+import fetch from "node-fetch";
 
 import { parseData } from "./parser.js";
 import {
@@ -15,6 +16,7 @@ const app = express();
 const userIntervals = {};
 const inFlight = new Set();
 export const userStates = {};
+export let slovakHolidays = [];
 
 const PORT = process.env.PORT || 8080;
 
@@ -29,6 +31,31 @@ app.get("/", (req, res) => {
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "healthy" });
 });
+
+async function loadHolidays() {
+  const year = new Date().getFullYear();
+  const nextYear = year + 1;
+
+  const years = [year, nextYear];
+  const allHolidays = [];
+
+  for (const y of years) {
+    const res = await fetch(
+      `https://date.nager.at/api/v3/PublicHolidays/${y}/SK`
+    );
+    const data = await res.json();
+    allHolidays.push(
+      ...data.map((h) => {
+        const d = new Date(h.date);
+        return `${String(d.getDate()).padStart(2, "0")}.${String(
+          d.getMonth() + 1
+        ).padStart(2, "0")}.${d.getFullYear()}`;
+      })
+    );
+  }
+
+  slovakHolidays = allHolidays;
+}
 
 export function startUserInterval(userId) {
   if (userIntervals[userId]) {
@@ -103,6 +130,8 @@ export async function checkUser(userId) {
     inFlight.delete(userId);
   }
 }
+
+await loadHolidays();
 
 checkForAllUsers();
 setInterval(

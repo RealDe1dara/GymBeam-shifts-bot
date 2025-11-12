@@ -22,7 +22,6 @@ export async function siteLogin(urlLogin, userEmail, userPassword, page) {
     page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 60000 }),
   ]);
 }
-
 async function getInvitedShifts(page) {
   try {
     await page.waitForSelector("#invitations_table_length", { timeout: 30000 });
@@ -50,22 +49,57 @@ async function getInvitedShifts(page) {
 
   if (!hasShifts) return [];
 
-  const invitedShifts = await page.$$eval(
-    "#invitations_table tbody tr",
-    (rows) =>
-      rows.map((row) => {
-        const cells = row.querySelectorAll("td");
+  const rowHandles = await page.$$("#invitations_table tbody tr");
+  const invitedShifts = [];
 
-        // Correct mapping based on DEBUG output:
-        // cells[0] = date, cells[1] = time_from, cells[2] = time_to, cells[3] = responsible
-        return {
-          date: cells[0]?.innerText.trim() || "",
-          time_from: cells[1]?.innerText.trim() || "",
-          time_to: cells[2]?.innerText.trim() || "",
-          responsible: cells[3]?.innerText.trim() || "",
-        };
-      })
-  );
+  for (const row of rowHandles) {
+    const cells = await row.$$eval("td", (tds) =>
+      tds.map((td) => td.innerText.trim())
+    );
+
+    const shift = {
+      date: cells[0] || "",
+      time_from: cells[1] || "",
+      time_to: cells[2] || "",
+      responsible: cells[3] || "",
+      // lunch: false,
+      allowed: true,
+    };
+
+    try {
+      const banIcon = await row.$("i.fa.fa-ban");
+      if (banIcon) {
+        shift.allowed = false;
+      }
+      // const takeBtn = await row.$("button.subscribe_shift");
+      // if (takeBtn && shift.allowed) {
+      //   await takeBtn.click();
+
+      //   await page.waitForSelector("#modal_subscribe", {
+      //     visible: true,
+      //     timeout: 5000,
+      //   });
+
+      //   const lunchInput = await page.$("#lunch_yes");
+      //   if (lunchInput) {
+      //     const isDisabled = await lunchInput.evaluate((el) =>
+      //       el.hasAttribute("disabled")
+      //     );
+      //     shift.lunch = !isDisabled;
+      //   } 
+
+      //   // const closeBtn = await page.$("button.close.dismiss");
+      //   // const closeBtn = await page.$("button.btn.btn-secondary.dismiss");
+      //   // if (closeBtn) await closeBtn.click();
+      //   // console.log("Lunch for:", shift, shift.lunch);
+      // }
+    } catch (err) {
+      console.warn("Could not check for shift:", shift, err);
+    }
+
+    invitedShifts.push(shift);
+  }
+
   return invitedShifts;
 }
 
@@ -114,6 +148,8 @@ async function getScheduledShifts(page) {
 export async function getShifts(urlLogin, userEmail, userPassword) {
   const browser = await puppeteer.launch({
     headless: "new",
+    // headless: false, // show the browser
+    // slowMo: 100,
     executablePath:
       process.env.PUPPETEER_EXECUTABLE_PATH || (await executablePath()),
     args: [
