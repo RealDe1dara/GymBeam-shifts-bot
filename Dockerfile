@@ -7,6 +7,9 @@ ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    g++ \
+    make \
     chromium \
     ca-certificates \
     fonts-liberation \
