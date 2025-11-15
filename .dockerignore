@@ -1,3 +1,6 @@
+bot.db
+*.db
+
 main
 assets/
 lab/

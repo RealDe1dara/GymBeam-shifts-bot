@@ -86,7 +86,7 @@ async function getInvitedShifts(page) {
       //       el.hasAttribute("disabled")
       //     );
       //     shift.lunch = !isDisabled;
-      //   } 
+      //   }
 
       //   // const closeBtn = await page.$("button.close.dismiss");
       //   // const closeBtn = await page.$("button.btn.btn-secondary.dismiss");
@@ -159,13 +159,26 @@ export async function getShifts(urlLogin, userEmail, userPassword) {
       "--disable-gpu",
       "--no-zygote",
       "--single-process",
-      "--window-size=1920,1080",
+      "--window-size=800,600",
+      "--disable-background-timer-throttling",
+      "--disable-backgrounding-occluded-windows",
+      "--disable-renderer-backgrounding",
     ],
   });
 
   const page = await browser.newPage();
   page.setDefaultTimeout(45000);
   page.setDefaultNavigationTimeout(60000);
+
+  await page.setRequestInterception(true);
+  page.on("request", (req) => {
+    const resourceType = req.resourceType();
+    if (["image", "stylesheet", "font"].includes(resourceType)) {
+      req.abort();
+    } else {
+      req.continue();
+    }
+  });
 
   try {
     await siteLogin(urlLogin, userEmail, userPassword, page);

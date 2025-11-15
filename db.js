@@ -1,63 +1,29 @@
-import dotenv from "dotenv";
-import mysql from "mysql2/promise";
+import Database from "better-sqlite3";
+import path from "path";
+import { fileURLToPath } from "url";
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-const poolConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-};
+const db = new Database(path.join(__dirname, "bot.db"));
 
-const pool = mysql.createPool(poolConfig);
-export default pool;
-
-async function initDB() {
+function initDB() {
   const createTableSQL = `
     CREATE TABLE IF NOT EXISTS users (
-      userId BIGINT PRIMARY KEY,
-      email VARCHAR(255),
-      password VARCHAR(255),
-      parsedData JSON
-    );
+      userId TEXT PRIMARY KEY,
+      email TEXT,
+      password TEXT,
+      parsedData TEXT DEFAULT '{}'
+    )
   `;
-
-  await pool.execute(createTableSQL);
-  console.log("Db init");
+  db.prepare(createTableSQL).run();
+  console.log("DB initialized with better-sqlite3");
 }
 
-initDB().catch(console.error);
-
-const upsertUserSQL = `
-  INSERT INTO users (userId, email, password, parsedData)
-  VALUES (?, ?, ?, '{}')
-  ON DUPLICATE KEY UPDATE
-    email = VALUES(email),
-    password = VALUES(password);
-`;
-
-const deleteUserSQL = `DELETE FROM users WHERE userId = ?;`;
-const getUserSQL = `SELECT * FROM users WHERE userId = ?;`;
-const getAllUsersSQL = `SELECT * FROM users;`;
-const saveParsedDataSQL = `
-  UPDATE users
-  SET parsedData = CAST(? AS JSON)
-  WHERE userId = ?
-`;
+initDB();
 
 function toParsedObject(val) {
-  if (val == null) return {};
-  if (Buffer.isBuffer(val)) {
-    try {
-      return JSON.parse(val.toString("utf8"));
-    } catch {
-      return {};
-    }
-  }
+  if (!val) return {};
   if (typeof val === "string") {
     try {
       return JSON.parse(val);
@@ -81,22 +47,32 @@ function sanitizeParsedData(pd) {
   };
 }
 
+const insertOrUpdateUserStmt = db.prepare(`
+  INSERT INTO users (userId, email, password, parsedData)
+  VALUES (?, ?, ?, '{}')
+  ON CONFLICT(userId) DO UPDATE SET
+    email = excluded.email,
+    password = excluded.password
+`);
+
+const deleteUserStmt = db.prepare(`DELETE FROM users WHERE userId = ?`);
+const getUserStmt = db.prepare(`SELECT * FROM users WHERE userId = ?`);
+const getAllUsersStmt = db.prepare(`SELECT * FROM users`);
+const saveParsedDataStmt = db.prepare(`
+  UPDATE users SET parsedData = ? WHERE userId = ?
+`);
+
 export async function addOrUpdateUser({ userId, email, password }) {
-  await pool.execute(upsertUserSQL, [
-    Number(userId),
-    String(email),
-    String(password),
-  ]);
+  insertOrUpdateUserStmt.run(String(userId), String(email), String(password));
 }
 
 export async function deleteUserById(userId) {
-  await pool.execute(deleteUserSQL, [Number(userId)]);
+  deleteUserStmt.run(String(userId));
 }
 
 export async function getUserById(userId) {
-  const [rows] = await pool.execute(getUserSQL, [Number(userId)]);
-  if (!rows[0]) return null;
-  const row = rows[0];
+  const row = getUserStmt.get(String(userId));
+  if (!row) return null;
   return {
     userId: row.userId,
     userEmail: row.email,
@@ -106,8 +82,7 @@ export async function getUserById(userId) {
 }
 
 export async function getAllUsers() {
-  const [rows] = await pool.execute(getAllUsersSQL);
-  return rows.map((row) => ({
+  return getAllUsersStmt.all().map((row) => ({
     userId: row.userId,
     userEmail: row.email,
     userPassword: row.password,
@@ -117,8 +92,5 @@ export async function getAllUsers() {
 
 export async function saveParsedData(userId, parsedData) {
   const clean = sanitizeParsedData(parsedData);
-  const [res] = await pool.execute(saveParsedDataSQL, [
-    JSON.stringify(clean),
-    Number(userId),
-  ]);
+  saveParsedDataStmt.run(JSON.stringify(clean), String(userId));
 }
