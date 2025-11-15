@@ -173,8 +173,7 @@ function getScheduledShiftsMessage(parsedData) {
     text += slovakHolidays.includes(date) ? " 🎉 Holiday!\n" : "\n";
 
     shiftsByDate[date].forEach((shift) => {
-      const status = shift.allowed ? "" : "❌";
-      text += `🪓 ${shift.time_from}–${shift.time_to} | ${shift.responsible} ${status}\n`;
+      text += `🪓 ${shift.time_from}–${shift.time_to} | ${shift.responsible}\n`;
     });
 
     text += "\n";
