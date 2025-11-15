@@ -15,6 +15,19 @@ import {
 const app = express();
 const userIntervals = {};
 const inFlight = new Set();
+const restDayNames = [
+  "Epiphany",
+  "Good Friday",
+  "Easter Monday",
+  "International Workers' Day",
+  "Day of victory over fascism",
+  "Day of Our Lady of the Seven Sorrows",
+  "All Saints’ Day",
+  "Christmas Eve",
+  "Christmas Day",
+  "St. Stephen's Day",
+];
+
 export const userStates = {};
 export let slovakHolidays = [];
 
@@ -44,14 +57,16 @@ async function loadHolidays() {
       `https://date.nager.at/api/v3/PublicHolidays/${y}/SK`
     );
     const data = await res.json();
-    allHolidays.push(
-      ...data.map((h) => {
+    const restDays = data
+      .filter((h) => restDayNames.includes(h.name))
+      .map((h) => {
         const d = new Date(h.date);
         return `${String(d.getDate()).padStart(2, "0")}.${String(
           d.getMonth() + 1
         ).padStart(2, "0")}.${d.getFullYear()}`;
-      })
-    );
+      });
+
+    allHolidays.push(...restDays);
   }
 
   slovakHolidays = allHolidays;
