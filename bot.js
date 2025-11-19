@@ -92,10 +92,10 @@ function thereIsOldShifts(parsedData) {
 
 function getNewShiftsMessage(parsedData) {
   if (!thereIsNewShifts(parsedData)) {
-    return "❌ You have no new shifts ❌";
+    return "❌ You have no new shifts ❌\n\n";
   }
 
-  let text = `✨ New ${parsedData.newShiftsCount} Shifts\n\n`;
+  let text = `\n\n✨ New ${parsedData.newShiftsCount} Shifts\n\n`;
 
   const sortedShifts = sortShiftsByDate(parsedData.newShifts);
 
@@ -117,16 +117,15 @@ function getNewShiftsMessage(parsedData) {
 
     text += "\n";
   }
-
-  return text.trim();
+  return text;
 }
 
 function getOldShiftsMessage(parsedData) {
   if (!thereIsOldShifts(parsedData)) {
-    return "❌ You have no old shifts ❌";
+    return "❌ You have no old shifts ❌\n\n";
   }
 
-  let text = `\n📅 Old ${parsedData.oldShiftsCount} Shifts\n\n`;
+  let text = `📅 Old ${parsedData.oldShiftsCount} Shifts\n\n`;
 
   const sortedShifts = sortShiftsByDate(parsedData.oldShifts);
 
@@ -148,16 +147,15 @@ function getOldShiftsMessage(parsedData) {
 
     text += "\n";
   }
-
-  return text.trim();
+  return text;
 }
 
 function getScheduledShiftsMessage(parsedData) {
   if (!thereIsScheduledShifts(parsedData)) {
-    return "❌ You have no scheduled shifts ❌";
+    return "❌ You have no scheduled shifts ❌\n\n";
   }
 
-  let text = `\n📌 Scheduled ${parsedData.scheduledShiftsCount} Shifts\n\n`;
+  let text = `📌 Scheduled ${parsedData.scheduledShiftsCount} Shifts\n\n`;
 
   const sortedShifts = sortShiftsByDate(parsedData.scheduledShifts);
 
@@ -178,8 +176,7 @@ function getScheduledShiftsMessage(parsedData) {
 
     text += "\n";
   }
-
-  return text.trim();
+  return text;
 }
 
 function sortShiftsByDate(shifts) {
@@ -221,8 +218,73 @@ export async function sendNewShifts(userId, parsedData) {
             { text: "📅 Old", callback_data: "send_old_shifts" },
             { text: "📌 Scheduled", callback_data: "send_scheduled_shifts" },
           ],
-          [{ text: "Take Shifts", url: CONFIG.URL_LOGIN }],
+          [
+            { text: "🧾 All", callback_data: "send_all_shifts" },
+            { text: "Take Shifts", url: CONFIG.URL_LOGIN },
+          ],
         ],
+      },
+    });
+  } catch (err) {
+    console.error("Error sending message:", err);
+  }
+}
+
+async function sendOldShifts(userId, parsedData) {
+  const message = getOldShiftsMessage(parsedData);
+  try {
+    await bot.sendMessage(userId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✨ New", callback_data: "send_new_shifts" },
+            { text: "📌 Scheduled", callback_data: "send_scheduled_shifts" },
+          ],
+          [
+            { text: "🧾 All", callback_data: "send_all_shifts" },
+            { text: "Take Shifts", url: CONFIG.URL_LOGIN },
+          ],
+        ],
+      },
+    });
+  } catch (err) {
+    console.error("Error sending message:", err);
+  }
+}
+
+async function sendScheduledShifts(userId, parsedData) {
+  const message = getScheduledShiftsMessage(parsedData);
+  try {
+    await bot.sendMessage(userId, message, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "✨ New", callback_data: "send_new_shifts" },
+            { text: "📅 Old", callback_data: "send_old_shifts" },
+          ],
+          [
+            { text: "🧾 All", callback_data: "send_all_shifts" },
+            { text: "Take Shifts", url: CONFIG.URL_LOGIN },
+          ],
+        ],
+      },
+    });
+  } catch (err) {
+    console.error("Error sending message:", err);
+  }
+}
+
+async function sendAllShifts(userId, parsedData) {
+  const message = [
+    getNewShiftsMessage(parsedData),
+    getOldShiftsMessage(parsedData),
+    getScheduledShiftsMessage(parsedData),
+  ].join("\n");
+
+  try {
+    await bot.sendMessage(userId, message, {
+      reply_markup: {
+        inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
       },
     });
   } catch (err) {
@@ -264,10 +326,11 @@ async function isValidPersonalData(userEmail, userPassword) {
 await bot.setMyCommands([
   { command: "start", description: "Start the bot" },
   { command: "stop", description: "Stop receiving updates" },
-  { command: "help", description: "Show existing commands" },
+  { command: "all", description: "Show all shifts" },
   { command: "new", description: "Show new shifts" },
   { command: "old", description: "Show old shifts" },
   { command: "scheduled", description: "Show scheduled shifts" },
+  { command: "help", description: "Show existing commands" },
 ]);
 
 bot.onText(/\/new/, async (msg) => {
@@ -276,11 +339,16 @@ bot.onText(/\/new/, async (msg) => {
   if (await blockIfUnregistered(userId)) return;
   const userRow = await getUserById(userId);
   const userData = userRow ? userRow.parsedData || {} : {};
-  await bot.sendMessage(userId, getNewShiftsMessage(userData), {
-    reply_markup: {
-      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
-    },
-  });
+  await sendNewShifts(userId, userData);
+});
+
+bot.onText(/\/all/, async (msg) => {
+  const userId = msg.chat.id;
+  if (blockIfRegistering(msg)) return;
+  if (await blockIfUnregistered(userId)) return;
+  const userRow = await getUserById(userId);
+  const userData = userRow ? userRow.parsedData || {} : {};
+  await sendAllShifts(userId, userData);
 });
 
 bot.onText(/\/old/, async (msg) => {
@@ -289,11 +357,7 @@ bot.onText(/\/old/, async (msg) => {
   if (await blockIfUnregistered(userId)) return;
   const userRow = await getUserById(userId);
   const userData = userRow ? userRow.parsedData || {} : {};
-  await bot.sendMessage(userId, getOldShiftsMessage(userData), {
-    reply_markup: {
-      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
-    },
-  });
+  await sendOldShifts(userId, userData);
 });
 
 bot.onText(/\/scheduled/, async (msg) => {
@@ -302,11 +366,7 @@ bot.onText(/\/scheduled/, async (msg) => {
   if (await blockIfUnregistered(userId)) return;
   const userRow = await getUserById(userId);
   const userData = userRow ? userRow.parsedData || {} : {};
-  await bot.sendMessage(userId, getScheduledShiftsMessage(userData), {
-    reply_markup: {
-      inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
-    },
-  });
+  await sendScheduledShifts(userId, userData);
 });
 
 bot.onText(/\/help/, async (msg) => {
@@ -314,7 +374,7 @@ bot.onText(/\/help/, async (msg) => {
   if (blockIfRegistering(msg)) return;
   await bot.sendMessage(
     userId,
-    "Available commands:\n/start - Start the bot\n/stop - Stop the bot\n/new - Show new shifts\n/old - Show old shifts\n/scheduled - Show scheduled shifts"
+    "Available commands:\n/start - Start the bot\n/stop - Stop the bot\n/new - Show new shifts\n/old - Show old shifts\n/scheduled - Show scheduled shifts\n/all - Show all shifts"
   );
 });
 
@@ -441,22 +501,21 @@ bot.on("callback_query", async (query) => {
   const userRow = await getUserById(userId);
   const userData = userRow ? userRow.parsedData || {} : {};
 
-  if (query.data === "send_old_shifts") {
-    const oldShiftsMessage = getOldShiftsMessage(userData);
-    await bot.sendMessage(userId, oldShiftsMessage, {
-      reply_markup: {
-        inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
-      },
-    });
-  }
-
-  if (query.data === "send_scheduled_shifts") {
-    const scheduledShiftsMessage = getScheduledShiftsMessage(userData);
-    await bot.sendMessage(userId, scheduledShiftsMessage, {
-      reply_markup: {
-        inline_keyboard: [[{ text: "Take Shifts", url: CONFIG.URL_LOGIN }]],
-      },
-    });
+  switch (query.data) {
+    case "send_old_shifts":
+      await sendOldShifts(userId, userData);
+      break;
+    case "send_new_shifts":
+      await sendNewShifts(userId, userData);
+      break;
+    case "send_scheduled_shifts":
+      await sendScheduledShifts(userId, userData);
+      break;
+    case "send_all_shifts":
+      await sendAllShifts(userId, userData);
+      break;
+    default:
+      break;
   }
 
   await bot.answerCallbackQuery(query.id);
